@@ -23,6 +23,17 @@ const PORT = 3000;
 
 app.use(express.json());
 
+// Middleware to ensure database is fully initialized and loaded from Supabase before any request is processed
+app.use(async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await dbService.ensureInitialized();
+    next();
+  } catch (err: any) {
+    console.error("[Database Middleware] Gagal inisialisasi database:", err);
+    res.status(500).json({ message: "Kesalahan internal server saat inisialisasi database: " + err.message });
+  }
+});
+
 // Middleware to ensure all pending Supabase syncs are completed before sending response (essential for serverless Vercel)
 app.use((req: Request, res: Response, next: NextFunction) => {
   const originalJson = res.json;

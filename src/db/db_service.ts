@@ -616,6 +616,8 @@ export class DatabaseService {
   private data: DatabaseSchema;
   private lastSavedData: Record<string, string> = {};
   public pendingSyncs: Promise<any>[] = [];
+  private isInitialized = false;
+  private initPromise: Promise<void> | null = null;
 
   constructor() {
     this.data = this.loadData();
@@ -646,27 +648,44 @@ export class DatabaseService {
   }
 
   public async initialize(): Promise<void> {
-    if (isSupabaseConfigured()) {
-      console.log("[DatabaseService] Membaca data dari Supabase...");
-      const cloudData = await loadFromSupabase();
-      if (cloudData) {
-        this.data = cloudData;
-        this.initDirtyChecking();
-        // Cache to local JSON store
-        try {
-          fs.writeFileSync(STORE_PATH, JSON.stringify(this.data, null, 2), "utf-8");
-          console.log("[DatabaseService] Sinkronisasi Supabase -> Cache Lokal berhasil dilakukan.");
-        } catch (e) {
-          console.error("[DatabaseService] Gagal memperbarui cache lokal:", e);
+    if (this.isInitialized) return;
+    if (this.initPromise) return this.initPromise;
+
+    this.initPromise = (async () => {
+      if (isSupabaseConfigured()) {
+        console.log("[DatabaseService] Membaca data dari Supabase...");
+        const cloudData = await loadFromSupabase();
+        if (cloudData) {
+          this.data = cloudData;
+          this.initDirtyChecking();
+          // Cache to local JSON store
+          try {
+            fs.writeFileSync(STORE_PATH, JSON.stringify(this.data, null, 2), "utf-8");
+            console.log("[DatabaseService] Sinkronisasi Supabase -> Cache Lokal berhasil dilakukan.");
+          } catch (e) {
+            console.error("[DatabaseService] Gagal memperbarui cache lokal:", e);
+          }
+        } else {
+          console.log("[DatabaseService] Supabase terdeteksi kosong atau tabel belum siap. Menyemai data lokal ke Supabase...");
+          await seedSupabase(this.data);
+          this.initDirtyChecking();
         }
       } else {
-        console.log("[DatabaseService] Supabase terdeteksi kosong atau tabel belum siap. Menyemai data lokal ke Supabase...");
-        await seedSupabase(this.data);
-        this.initDirtyChecking();
+        console.log("[DatabaseService] Supabase tidak dikonfigurasi. Menggunakan file lokal JSON offline.");
       }
-    } else {
-      console.log("[DatabaseService] Supabase tidak dikonfigurasi. Menggunakan file lokal JSON offline.");
+      this.isInitialized = true;
+    })();
+
+    return this.initPromise;
+  }
+
+  public async ensureInitialized(): Promise<void> {
+    if (this.isInitialized) return;
+    if (this.initPromise) {
+      await this.initPromise;
+      return;
     }
+    await this.initialize();
   }
 
   private loadData(): DatabaseSchema {
