@@ -686,7 +686,7 @@ export default function RekapNilai() {
                 <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
                   {loading ? (
                     <tr>
-                      <td colSpan={activeTps.length + activeLMs.length + 10} className="text-center py-8 text-slate-400">
+                      <td colSpan={activeTps.length + activeLMs.length + 9} className="text-center py-8 text-slate-400">
                         <div className="h-6 w-6 animate-spin rounded-full border-2 border-slate-300 border-t-brand-600 mx-auto mb-2"></div>
                         Memproses laporan rekap...
                       </td>
@@ -751,7 +751,7 @@ export default function RekapNilai() {
                     })
                   ) : (
                     <tr>
-                      <td colSpan={activeTps.length + activeLMs.length + 10} className="text-center py-8 text-slate-400">
+                      <td colSpan={activeTps.length + activeLMs.length + 9} className="text-center py-8 text-slate-400">
                         Tidak ada siswa terdaftar pada kelas aktif ini.
                       </td>
                     </tr>
