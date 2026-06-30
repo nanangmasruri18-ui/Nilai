@@ -1,3 +1,4 @@
+import "dotenv/config";
 import express, { Request, Response, NextFunction } from "express";
 import path from "path";
 import jwt from "jsonwebtoken";
@@ -856,6 +857,13 @@ app.get(
 // VITE DEV SERVER & PRODUCTION ROUTING
 // =====================================================================
 async function start() {
+  // Initialize dbService with Supabase before starting up the server
+  try {
+    await dbService.initialize();
+  } catch (err) {
+    console.error("[SERVER] Gagal menginisialisasi database Supabase pada startup:", err);
+  }
+
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: {

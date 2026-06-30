@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import bcrypt from "bcryptjs";
+import { isSupabaseConfigured, loadFromSupabase, syncTableToSupabase, seedSupabase } from "./supabase_service.js";
 
 // =====================================================================
 // TYPED ARCHITECTURE FOR DATABASE ENTITIES
@@ -613,9 +614,58 @@ function getInitialData(): DatabaseSchema {
 // Database Service Instance Manager
 export class DatabaseService {
   private data: DatabaseSchema;
+  private lastSavedData: Record<string, string> = {};
 
   constructor() {
     this.data = this.loadData();
+    this.initDirtyChecking();
+  }
+
+  private initDirtyChecking(): void {
+    const keys: (keyof DatabaseSchema)[] = [
+      "sekolah",
+      "roles",
+      "users",
+      "guru",
+      "kelas",
+      "siswa",
+      "mapel",
+      "guru_pengampu",
+      "tujuan_pembelajaran",
+      "kkm",
+      "bobot_penilaian",
+      "nilai_formatif",
+      "nilai_slm",
+      "nilai_sas",
+      "audit_log",
+    ];
+    for (const key of keys) {
+      this.lastSavedData[key] = JSON.stringify(this.data[key] || []);
+    }
+  }
+
+  public async initialize(): Promise<void> {
+    if (isSupabaseConfigured()) {
+      console.log("[DatabaseService] Membaca data dari Supabase...");
+      const cloudData = await loadFromSupabase();
+      if (cloudData) {
+        this.data = cloudData;
+        this.initDirtyChecking();
+        // Cache to local JSON store
+        try {
+          fs.writeFileSync(STORE_PATH, JSON.stringify(this.data, null, 2), "utf-8");
+          console.log("[DatabaseService] Sinkronisasi Supabase -> Cache Lokal berhasil dilakukan.");
+        } catch (e) {
+          console.error("[DatabaseService] Gagal memperbarui cache lokal:", e);
+        }
+      } else {
+        console.log("[DatabaseService] Supabase terdeteksi kosong atau tabel belum siap. Menyemai data lokal ke Supabase...");
+        await seedSupabase(this.data);
+        this.initDirtyChecking();
+      }
+    } else {
+      console.log("[DatabaseService] Supabase tidak dikonfigurasi. Menggunakan file lokal JSON offline.");
+    }
   }
 
   private loadData(): DatabaseSchema {
@@ -642,6 +692,37 @@ export class DatabaseService {
   private save(): void {
     try {
       fs.writeFileSync(STORE_PATH, JSON.stringify(this.data, null, 2), "utf-8");
+
+      // Background non-blocking sync to Supabase based on modified tables (dirty checking)
+      if (isSupabaseConfigured()) {
+        const keys: (keyof DatabaseSchema)[] = [
+          "sekolah",
+          "roles",
+          "users",
+          "guru",
+          "kelas",
+          "siswa",
+          "mapel",
+          "guru_pengampu",
+          "tujuan_pembelajaran",
+          "kkm",
+          "bobot_penilaian",
+          "nilai_formatif",
+          "nilai_slm",
+          "nilai_sas",
+          "audit_log",
+        ];
+        for (const key of keys) {
+          const currentStr = JSON.stringify(this.data[key] || []);
+          if (currentStr !== this.lastSavedData[key]) {
+            this.lastSavedData[key] = currentStr;
+            // Fire and forget (executed in background)
+            syncTableToSupabase(key, this.data[key]).catch((err) => {
+              console.error(`[DatabaseService] Gagal sinkronisasi background untuk ${key}:`, err);
+            });
+          }
+        }
+      }
     } catch (e) {
       console.error("Gagal menyimpan data ke file JSON:", e);
     }
