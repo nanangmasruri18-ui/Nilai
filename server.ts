@@ -1,5 +1,14 @@
 import "dotenv/config";
 import express, { Request, Response, NextFunction } from "express";
+
+// Global handlers to capture any unexpected promise rejections or exceptions
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("[SERVER] Terjadi Unhandled Rejection pada Promise:", promise, "Alasan:", reason);
+});
+
+process.on("uncaughtException", (error) => {
+  console.error("[SERVER] Terjadi Uncaught Exception:", error);
+});
 import path from "path";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
@@ -51,14 +60,34 @@ app.use((req: Request, res: Response, next: NextFunction) => {
     }
   };
 
-  res.json = async function (body) {
-    await awaitSyncs();
-    return originalJson.call(this, body);
+  res.json = function (body) {
+    awaitSyncs()
+      .catch((err) => {
+        console.error("[Vercel Serverless Sync] Gagal sinkronisasi sebelum mengirim JSON:", err);
+      })
+      .finally(() => {
+        try {
+          originalJson.call(this, body);
+        } catch (err) {
+          console.error("[Vercel Serverless Sync] Gagal mengeksekusi originalJson:", err);
+        }
+      });
+    return this;
   } as any;
 
-  res.send = async function (body) {
-    await awaitSyncs();
-    return originalSend.call(this, body);
+  res.send = function (body) {
+    awaitSyncs()
+      .catch((err) => {
+        console.error("[Vercel Serverless Sync] Gagal sinkronisasi sebelum mengirim SEND:", err);
+      })
+      .finally(() => {
+        try {
+          originalSend.call(this, body);
+        } catch (err) {
+          console.error("[Vercel Serverless Sync] Gagal mengeksekusi originalSend:", err);
+        }
+      });
+    return this;
   } as any;
 
   next();
