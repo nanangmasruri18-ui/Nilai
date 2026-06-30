@@ -615,6 +615,7 @@ function getInitialData(): DatabaseSchema {
 export class DatabaseService {
   private data: DatabaseSchema;
   private lastSavedData: Record<string, string> = {};
+  public pendingSyncs: Promise<any>[] = [];
 
   constructor() {
     this.data = this.loadData();
@@ -690,10 +691,15 @@ export class DatabaseService {
   }
 
   private save(): void {
+    // 1. Try to save locally (will fail on Vercel/read-only systems, which is fine/expected)
     try {
       fs.writeFileSync(STORE_PATH, JSON.stringify(this.data, null, 2), "utf-8");
+    } catch (e) {
+      console.warn("[DatabaseService] Gagal menyimpan cache lokal JSON (diabaikan di Vercel/Serverless):", e);
+    }
 
-      // Background non-blocking sync to Supabase based on modified tables (dirty checking)
+    // 2. Perform Supabase sync
+    try {
       if (isSupabaseConfigured()) {
         const keys: (keyof DatabaseSchema)[] = [
           "sekolah",
@@ -716,15 +722,24 @@ export class DatabaseService {
           const currentStr = JSON.stringify(this.data[key] || []);
           if (currentStr !== this.lastSavedData[key]) {
             this.lastSavedData[key] = currentStr;
-            // Fire and forget (executed in background)
-            syncTableToSupabase(key, this.data[key]).catch((err) => {
+            
+            // Track the sync promise
+            const promise = syncTableToSupabase(key, this.data[key]).catch((err) => {
               console.error(`[DatabaseService] Gagal sinkronisasi background untuk ${key}:`, err);
+            });
+            
+            this.pendingSyncs.push(promise);
+            promise.finally(() => {
+              const idx = this.pendingSyncs.indexOf(promise);
+              if (idx !== -1) {
+                this.pendingSyncs.splice(idx, 1);
+              }
             });
           }
         }
       }
     } catch (e) {
-      console.error("Gagal menyimpan data ke file JSON:", e);
+      console.error("[DatabaseService] Error pada proses inisiasi sinkronisasi Supabase:", e);
     }
   }
 

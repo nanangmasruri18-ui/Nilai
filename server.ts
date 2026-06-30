@@ -23,6 +23,36 @@ const PORT = 3000;
 
 app.use(express.json());
 
+// Middleware to ensure all pending Supabase syncs are completed before sending response (essential for serverless Vercel)
+app.use((req: Request, res: Response, next: NextFunction) => {
+  const originalJson = res.json;
+  const originalSend = res.send;
+
+  const awaitSyncs = async () => {
+    try {
+      if (dbService && dbService.pendingSyncs && dbService.pendingSyncs.length > 0) {
+        console.log(`[Vercel Serverless Sync] Waiting for ${dbService.pendingSyncs.length} pending database syncs...`);
+        await Promise.all(dbService.pendingSyncs);
+        console.log(`[Vercel Serverless Sync] All database syncs completed successfully!`);
+      }
+    } catch (err) {
+      console.error("[Vercel Serverless Sync] Error waiting for database syncs:", err);
+    }
+  };
+
+  res.json = async function (body) {
+    await awaitSyncs();
+    return originalJson.call(this, body);
+  } as any;
+
+  res.send = async function (body) {
+    await awaitSyncs();
+    return originalSend.call(this, body);
+  } as any;
+
+  next();
+});
+
 // =====================================================================
 // AUTHENTICATION MIDDLEWARE
 // =====================================================================
