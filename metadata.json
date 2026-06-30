@@ -1,0 +1,8 @@
+{
+  "name": "Sistem Penilaian Kurikulum Merdeka SD",
+  "description": "Sistem Penilaian Siswa Sekolah Dasar Kurikulum Merdeka untuk pengolahan nilai dan rekapitulasi hasil belajar siswa berbasis role (Admin, Guru Kelas, Guru Mata Pelajaran).",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
