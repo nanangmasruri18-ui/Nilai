@@ -1,6 +1,72 @@
 <!doctype html>
 <html lang="en">
   <head>
+    <script>
+      (function() {
+        if (typeof window !== 'undefined') {
+          // 1. Intercept WebSocket to bypass Vite HMR connection attempts
+          const OriginalWebSocket = window.WebSocket;
+          if (OriginalWebSocket) {
+            window.WebSocket = new Proxy(OriginalWebSocket, {
+              construct(target, args) {
+                const [url, protocols] = args;
+                if (protocols === 'vite-hmr' || (typeof url === 'string' && (url.includes('vite-hmr') || url.includes('/vite')))) {
+                  console.log('[WebSocket Suppressor] Intercepted and bypassed Vite HMR connection:', url);
+                  
+                  // Return a dummy object that behaves like a closed WebSocket without triggering "Illegal invocation"
+                  const dummy = {
+                    url: url,
+                    protocols: protocols || '',
+                    readyState: 3, // CLOSED
+                    binaryType: 'blob',
+                    onopen: null,
+                    onerror: null,
+                    onclose: null,
+                    onmessage: null,
+                    send() {},
+                    close() {},
+                    addEventListener() {},
+                    removeEventListener() {},
+                    dispatchEvent() { return true; }
+                  };
+                  return dummy;
+                }
+                return Reflect.construct(target, args);
+              }
+            });
+          }
+
+          // 2. Add global error / unhandledrejection handlers early
+          const suppressViteError = (msg) => {
+            return (
+              msg &&
+              (msg.includes('WebSocket') ||
+                msg.includes('websocket') ||
+                msg.includes('vite') ||
+                msg.includes('HMR') ||
+                msg.includes('without opened'))
+            );
+          };
+
+          window.addEventListener('unhandledrejection', function(event) {
+            const reason = event.reason || {};
+            const msg = reason.message || String(reason);
+            if (suppressViteError(msg)) {
+              event.preventDefault();
+              event.stopImmediatePropagation();
+            }
+          }, true);
+
+          window.addEventListener('error', function(event) {
+            const msg = event.message || '';
+            if (suppressViteError(msg)) {
+              event.preventDefault();
+              event.stopImmediatePropagation();
+            }
+          }, true);
+        }
+      })();
+    </script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>My Google AI Studio App</title>
